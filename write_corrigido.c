@@ -13,11 +13,11 @@
 #define _POSIX_SOURCE 1
 #define MAX_PAYLOAD_SIZE 1024
 
-// Protocolo Camada de Ligação
+// Data link 
 #define FLAG 0x7E
 #define ESC  0x7D
-#define A_TX 0x03  // Comandos do Emissor / Respostas do Recetor
-#define A_RX 0x01  // Comandos do Recetor / Respostas do Emissor
+#define A_TX 0x03  
+#define A_RX 0x01  
 
 #define C_SET  0x03
 #define C_UA   0x07
@@ -29,18 +29,18 @@
 #define C_REJ0 0x01
 #define C_REJ1 0x81
 
-// Protocolo Camada de Aplicação
+// app layer 
 #define APP_DATA  0x01
 #define APP_START 0x02
 #define APP_END   0x03
 #define T_SIZE    0x00
 #define T_NAME    0x01
 
-// Configurações de retransmissão
+// configurações de retransmissão
 #define MAX_ATTEMPTS 3
 #define TIMEOUT 3
 
-// Variáveis Globais
+// alarme e ns (globais)
 struct termios oldtio;
 int alarmEnabled = 0;
 int alarmCount = 0;
@@ -136,7 +136,7 @@ int llwrite(int fd, unsigned char *buffer, int length) {
     int frameIdx = 0;
     unsigned char ctrl = (ns == 0) ? C_I0 : C_I1;
 
-    // Header
+    // header
     frame[frameIdx++] = FLAG;
     frame[frameIdx++] = A_TX;
     frame[frameIdx++] = ctrl;
@@ -146,7 +146,7 @@ int llwrite(int fd, unsigned char *buffer, int length) {
     unsigned char bcc2 = 0;
     for (int i = 0; i < length; i++) bcc2 ^= buffer[i];
 
-    // Byte Stuffing (Dados + BCC2)
+    // byte Stuffing (Dados + BCC2)
     for (int i = 0; i <= length; i++) {
         unsigned char b = (i < length) ? buffer[i] : bcc2;
         if (b == FLAG) {
@@ -161,7 +161,6 @@ int llwrite(int fd, unsigned char *buffer, int length) {
     }
     frame[frameIdx++] = FLAG;
 
-    // Protocolo Stop-and-Wait
     unsigned char expectedRR = (ns == 0) ? C_RR1 : C_RR0;
     unsigned char expectedREJ = (ns == 0) ? C_REJ1 : C_REJ0;
 
@@ -175,7 +174,7 @@ int llwrite(int fd, unsigned char *buffer, int length) {
     State state = STATE_START;
     unsigned char A, C;
 
-    // Read supervision frame manually (to detect RR or REJ)
+    // read supervision manual-> detetar REJ OU RR
     while (state != STATE_STOP && alarmEnabled == 0) {
         int res = read(fd, &byte, 1);
 
@@ -224,22 +223,22 @@ int llwrite(int fd, unsigned char *buffer, int length) {
 
     if (state != STATE_STOP) { //retransmissão
         if (alarmEnabled) {
-            printf("[LLWRITE] Timeout → retransmitir\n");
+            printf("[LLWRITE] Timeout -> retransmitir\n");
         } else {
-            printf("[LLWRITE] pacote invalido → ignorar\n");
+            printf("[LLWRITE] pacote invalido ->> ignorar\n");
         }
         continue;
 }
 
-    // RR received
+    // RR recebido
     if (C == expectedRR) {
         ns = (ns + 1) % 2;
         return length;
     }
 
-    // REJ received retransmission
+    // REJ recebido
     if (C == expectedREJ) {
-        printf("[LLWRITE] REJ recebido → retransmitir imediatamente\n");
+        printf("[LLWRITE] REJ recebido -> retransmitir imediatamente\n");
         continue;
     }
 }
@@ -256,10 +255,10 @@ int llclose(int fd) {
         alarmEnabled = 0;
         alarm(TIMEOUT);
 
-        // Espera DISC do recetor (A_RX pois o recetor envia comando DISC)
+        //  DISC do recetor 
         if (readSupervision(fd, A_RX, C_DISC) == 0) {
             alarm(0);
-            // Envia UA final (A_RX pois é uma resposta do emissor a um comando do recetor)
+            // UA final 
             unsigned char ua_frame[5] = {FLAG, A_RX, C_UA, A_RX ^ C_UA, FLAG};
             write(fd, ua_frame, 5);
             printf("[LLCLOSE] Conexão terminada com sucesso.\n");
@@ -281,7 +280,7 @@ int sendControlPacket(int fd, unsigned char ctrl, const char *filename, int file
 
     packet[idx++] = ctrl;
 
-    // Tamanho do ficheiro (T, L, V)
+    // tamanho do ficheiro (T, L, V)
     packet[idx++] = T_SIZE;
     packet[idx++] = 4;
     packet[idx++] = (filesize >> 24) & 0xFF;
@@ -289,7 +288,7 @@ int sendControlPacket(int fd, unsigned char ctrl, const char *filename, int file
     packet[idx++] = (filesize >> 8) & 0xFF;
     packet[idx++] = filesize & 0xFF;
 
-    // Nome do ficheiro (T, L, V)
+    // Nome do ficheiro 
     int namelen = strlen(filename);
     packet[idx++] = T_NAME;
     packet[idx++] = namelen;
@@ -328,10 +327,10 @@ int main(int argc, char** argv) {
 
     printf("[MAIN] A enviar dados do ficheiro...\n");
     while ((bytesRead = fread(fileBuf, 1, sizeof(fileBuf), f)) > 0) {
-        // Cabeçalho de aplicação (3 bytes conforme o guião): C | L2 | L1
+        // cabeçalho de aplicação: C | L2 | L1
         appPacket[0] = APP_DATA;
-        appPacket[1] = (bytesRead >> 8) & 0xFF; // L2 (High byte)
-        appPacket[2] = bytesRead & 0xFF;        // L1 (Low byte)
+        appPacket[1] = (bytesRead >> 8) & 0xFF; // L2 
+        appPacket[2] = bytesRead & 0xFF;        // L1 
         memcpy(&appPacket[3], fileBuf, bytesRead);
 
         if (llwrite(fd, appPacket, bytesRead + 3) < 0) {
