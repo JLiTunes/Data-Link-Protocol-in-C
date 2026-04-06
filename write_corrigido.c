@@ -8,9 +8,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-// ============================================================================
-// DEFINIÇÕES E CONSTANTES
-// ============================================================================
 
 #define BAUDRATE B38400
 #define _POSIX_SOURCE 1
@@ -47,29 +44,28 @@
 struct termios oldtio;
 int alarmEnabled = 0;
 int alarmCount = 0;
-int ns = 0; // Número de sequência da trama I (0 ou 1)
+int ns = 0; // num do pacote ser 1 ou 0 no I
 
-// ----------------------------------------------------------------------------
-// GESTÃO DE ALARME
-// ----------------------------------------------------------------------------
+
 void alarmHandler(int signal) {
     alarmEnabled = 1;
     alarmCount++;
     printf("\n[ALARM] Tentativa %d...\n", alarmCount);
 }
 
-// ----------------------------------------------------------------------------
-// MÁQUINA DE ESTADOS (Leitura de Supervisão)
-// ----------------------------------------------------------------------------
+
 typedef enum { STATE_START, FLAG_RCV, A_RCV, C_RCV, BCC_OK, STATE_STOP } State;
 
 int readSupervision(int fd, unsigned char targetA, unsigned char targetC) {
     unsigned char byte;
     State state = STATE_START;
     
-    // Continua a ler enquanto não chegar ao estado STOP e não houver timeout
     while (state != STATE_STOP && alarmEnabled == 0) {
-        if (read(fd, &byte, 1) <= 0) continue;
+        int res = read(fd, &byte, 1);
+        if (res <= 0) {
+            if (alarmEnabled) break;
+            continue;
+        }
 
         switch (state) {
             case STATE_START:
@@ -99,9 +95,7 @@ int readSupervision(int fd, unsigned char targetA, unsigned char targetC) {
     return (state == STATE_STOP) ? 0 : -1;
 }
 
-// ----------------------------------------------------------------------------
-// LLOPEN
-// ----------------------------------------------------------------------------
+
 int llopen(const char *port) {
     int fd = open(port, O_RDWR | O_NOCTTY);
     if (fd < 0) { perror(port); return -1; }
@@ -111,8 +105,8 @@ int llopen(const char *port) {
     memset(&newtio, 0, sizeof(newtio));
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
-    newtio.c_cc[VTIME] = 0;
-    newtio.c_cc[VMIN] = 1;
+    newtio.c_cc[VTIME] = 1; //TEMPO DE ESPERA DO READ
+    newtio.c_cc[VMIN] = 0; //BYTE MIN QUE O READ REQUER
     tcflush(fd, TCIOFLUSH);
     tcsetattr(fd, TCSANOW, &newtio);
 
@@ -122,11 +116,11 @@ int llopen(const char *port) {
     alarmCount = 0;
     while (alarmCount < MAX_ATTEMPTS) {
         write(fd, set_frame, 5);
-        alarm(TIMEOUT);
         alarmEnabled = 0;
+        alarm(TIMEOUT);
         
         if (readSupervision(fd, A_TX, C_UA) == 0) {
-            alarm(0); // Desativa alarme
+            alarm(0);
             printf("[LLOPEN] Conexão estabelecida.\n");
             return fd;
         }
@@ -136,9 +130,7 @@ int llopen(const char *port) {
     return -1;
 }
 
-// ----------------------------------------------------------------------------
-// LLWRITE
-// ----------------------------------------------------------------------------
+
 int llwrite(int fd, unsigned char *buffer, int length) {
     unsigned char frame[MAX_PAYLOAD_SIZE * 2 + 10];
     int frameIdx = 0;
@@ -150,7 +142,7 @@ int llwrite(int fd, unsigned char *buffer, int length) {
     frame[frameIdx++] = ctrl;
     frame[frameIdx++] = A_TX ^ ctrl;
 
-    // BCC2 (calculado sobre o buffer de dados)
+    // BCC2
     unsigned char bcc2 = 0;
     for (int i = 0; i < length; i++) bcc2 ^= buffer[i];
 
@@ -171,13 +163,13 @@ int llwrite(int fd, unsigned char *buffer, int length) {
 
     // Protocolo Stop-and-Wait
     unsigned char expectedRR = (ns == 0) ? C_RR1 : C_RR0;
-    unsigned char expectedREJ = (ns == 0) ? C_REJ0 : C_REJ1;
+    unsigned char expectedREJ = (ns == 0) ? C_REJ1 : C_REJ0;
 
     alarmCount = 0;
     while (alarmCount < MAX_ATTEMPTS) {
     write(fd, frame, frameIdx);
-    alarm(TIMEOUT);
     alarmEnabled = 0;
+    alarm(TIMEOUT);
 
     unsigned char byte;
     State state = STATE_START;
@@ -185,7 +177,12 @@ int llwrite(int fd, unsigned char *buffer, int length) {
 
     // Read supervision frame manually (to detect RR or REJ)
     while (state != STATE_STOP && alarmEnabled == 0) {
-        if (read(fd, &byte, 1) <= 0) continue;
+        int res = read(fd, &byte, 1);
+
+        if (res <= 0) {
+            if (alarmEnabled) break;
+            continue;
+        }
 
         switch (state) {
             case STATE_START:
@@ -225,10 +222,14 @@ int llwrite(int fd, unsigned char *buffer, int length) {
 
     alarm(0);
 
-    if (state != STATE_STOP) {
-        // Timeout → retransmit
+    if (state != STATE_STOP) { //retransmissão
+        if (alarmEnabled) {
+            printf("[LLWRITE] Timeout → retransmitir\n");
+        } else {
+            printf("[LLWRITE] Trama inválida → ignorar\n");
+        }
         continue;
-    }
+}
 
     // RR received
     if (C == expectedRR) {
@@ -241,24 +242,19 @@ int llwrite(int fd, unsigned char *buffer, int length) {
         printf("[LLWRITE] REJ recebido → retransmitir imediatamente\n");
         continue;
     }
-
-    // Ignore other cases → retransmit
 }
 
     return -1;
 }
 
-// ----------------------------------------------------------------------------
-// LLCLOSE
-// ----------------------------------------------------------------------------
 int llclose(int fd) {
     unsigned char disc_frame[5] = {FLAG, A_TX, C_DISC, A_TX ^ C_DISC, FLAG};
     
     alarmCount = 0;
     while (alarmCount < MAX_ATTEMPTS) {
         write(fd, disc_frame, 5);
-        alarm(TIMEOUT);
         alarmEnabled = 0;
+        alarm(TIMEOUT);
 
         // Espera DISC do recetor (A_RX pois o recetor envia comando DISC)
         if (readSupervision(fd, A_RX, C_DISC) == 0) {
@@ -271,15 +267,13 @@ int llclose(int fd) {
         }
     }
 
-    sleep(1); // Margem para o UA sair
+    sleep(1); //tempo para o ua ser enviado
     tcsetattr(fd, TCSANOW, &oldtio);
     close(fd);
     return 0;
 }
 
-// ----------------------------------------------------------------------------
-// FUNÇÕES DE APLICAÇÃO
-// ----------------------------------------------------------------------------
+//funções de app
 
 int sendControlPacket(int fd, unsigned char ctrl, const char *filename, int filesize) {
     unsigned char packet[256];
@@ -305,9 +299,7 @@ int sendControlPacket(int fd, unsigned char ctrl, const char *filename, int file
     return llwrite(fd, packet, idx);
 }
 
-// ----------------------------------------------------------------------------
-// MAIN
-// ----------------------------------------------------------------------------
+
 int main(int argc, char** argv) {
     if (argc < 3) {
         printf("Uso: %s <PortaSerie> <Ficheiro>\n", argv[0]);
