@@ -323,8 +323,8 @@ int main(int argc, char** argv) {
     printf("[MAIN] A enviar pacote START...\n");
     sendControlPacket(fd, APP_START, filename, filesize);
 
-    unsigned char fileBuf[512];
-    unsigned char appPacket[512 + 3];
+    unsigned char fileBuf[1024];
+    unsigned char appPacket[1024 + 3];
     int bytesRead;
 
     printf("[MAIN] A enviar dados do ficheiro...\n");
