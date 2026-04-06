@@ -44,7 +44,7 @@ int expected_ns = 0; // Próximo Ns esperado (0 ou 1)
 
 typedef enum { STATE_START, FLAG_RCV, A_RCV, C_RCV, BCC_OK, STATE_STOP } State;
 
-int readSupervision(int fd, unsigned char targetA, unsigned char targetC) {
+int readSupervision(int fd, unsigned char targetA, unsigned char targetC) { //parte de ler o SET 
     unsigned char byte;
     State state = STATE_START;
 
@@ -89,12 +89,12 @@ int llopen(const char *port) {
     memset(&newtio, 0, sizeof(newtio));
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
-    newtio.c_cc[VTIME] = 0;
-    newtio.c_cc[VMIN] = 1;
+    newtio.c_cc[VTIME] = 0; //tempo timeout do read
+    newtio.c_cc[VMIN] = 1; //bytes min do read antes de dar timeout
     tcflush(fd, TCIOFLUSH);
     tcsetattr(fd, TCSANOW, &newtio);
 
-    printf("[LLOPEN] A aguardar SET...\n");
+    printf("[LLOPEN] À espera do SET...\n");
     readSupervision(fd, A_TX, C_SET);
     
     printf("[LLOPEN] SET recebido. A enviar UA...\n");
@@ -148,7 +148,7 @@ int llread(int fd, unsigned char *packet) {
         }
     }
 
-    // Se recebermos um DISC, sinalizamos para fechar a ligação
+    // Se recebermos um DISC, retornar erro/fechar
     if (control == C_DISC) return -2;
 
     // tirar o bcc do packet
@@ -160,7 +160,7 @@ int llread(int fd, unsigned char *packet) {
     res[0] = FLAG;
     res[1] = A_TX;
 
-    // Erro de BCC2 -> Enviar REJ
+    // se o xor não for igual a bcc2 enviar REJ
     if (bcc2_calc != bcc2_received) {
         printf("[LLREAD] Erro de BCC2! A enviar REJ...\n");
         res[2] = (expected_ns == 0) ? C_REJ0 : C_REJ1; //if ns = 0 C_REJ0 else C_REJ1
@@ -181,7 +181,7 @@ int llread(int fd, unsigned char *packet) {
         return i; // Sucesso, retorna tamanho dos dados
     } else {
         // Pacote duplicado: aceitamos mas descartamos os dados para a app
-        printf("[LLREAD] Trama duplicada detectada. A enviar RR...\n");
+        printf("[LLREAD] Pacote duplicado detectado. A enviar RR...\n");
         res[2] = (expected_ns == 0) ? C_RR0 : C_RR1;
         res[3] = res[1] ^ res[2];
         res[4] = FLAG;
