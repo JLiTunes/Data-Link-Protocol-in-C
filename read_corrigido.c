@@ -17,8 +17,8 @@
 // Protocolo Camada de Ligação
 #define FLAG 0x7E
 #define ESC  0x7D
-#define A_TX 0x03  // Comandos do Emissor
-#define A_RX 0x01  // Comandos do Recetor / Respostas do Emissor
+#define A_TX 0x03  
+#define A_RX 0x01  
 
 #define C_SET  0x03
 #define C_UA   0x07
@@ -30,16 +30,16 @@
 #define C_REJ0 0x01
 #define C_REJ1 0x81
 
-// Protocolo Camada de Aplicação
+// app layer
 #define APP_DATA  0x01
 #define APP_START 0x02
 #define APP_END   0x03
 #define T_SIZE    0x00
 #define T_NAME    0x01
 
-// Variáveis Globais
+// var global
 struct termios oldtio;
-int expected_ns = 0; // Próximo Ns esperado (0 ou 1)
+int expected_ns = 0; // proximo Ns esperado (0 ou 1)
 
 
 typedef enum { STATE_START, FLAG_RCV, A_RCV, C_RCV, BCC_OK, STATE_STOP } State;
