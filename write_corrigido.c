@@ -226,7 +226,7 @@ int llwrite(int fd, unsigned char *buffer, int length) {
         if (alarmEnabled) {
             printf("[LLWRITE] Timeout → retransmitir\n");
         } else {
-            printf("[LLWRITE] Trama inválida → ignorar\n");
+            printf("[LLWRITE] pacote invalido → ignorar\n");
         }
         continue;
 }

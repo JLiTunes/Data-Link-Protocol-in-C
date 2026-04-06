@@ -8,9 +8,7 @@
 #include <unistd.h>
 #include <time.h>
 
-// ============================================================================
-// DEFINIÇÕES E CONSTANTES
-// ============================================================================
+
 
 #define BAUDRATE B38400
 #define _POSIX_SOURCE 1
@@ -43,9 +41,7 @@
 struct termios oldtio;
 int expected_ns = 0; // Próximo Ns esperado (0 ou 1)
 
-// ----------------------------------------------------------------------------
-// MÁQUINA DE ESTADOS (Supervisão)
-// ----------------------------------------------------------------------------
+
 typedef enum { STATE_START, FLAG_RCV, A_RCV, C_RCV, BCC_OK, STATE_STOP } State;
 
 int readSupervision(int fd, unsigned char targetA, unsigned char targetC) {
@@ -83,9 +79,7 @@ int readSupervision(int fd, unsigned char targetA, unsigned char targetC) {
     return 0;
 }
 
-// ----------------------------------------------------------------------------
-// LLOPEN
-// ----------------------------------------------------------------------------
+
 int llopen(const char *port) {
     int fd = open(port, O_RDWR | O_NOCTTY);
     if (fd < 0) { perror(port); return -1; }
@@ -110,9 +104,7 @@ int llopen(const char *port) {
     return fd;
 }
 
-// ----------------------------------------------------------------------------
-// LLREAD
-// ----------------------------------------------------------------------------
+
 int llread(int fd, unsigned char *packet) {
     State state = STATE_START;
     unsigned char byte, control;
@@ -159,7 +151,7 @@ int llread(int fd, unsigned char *packet) {
     // Se recebermos um DISC, sinalizamos para fechar a ligação
     if (control == C_DISC) return -2;
 
-    // O último byte no buffer 'packet' é o BCC2
+    // tirar o bcc do packet
     unsigned char bcc2_received = packet[--i];
     unsigned char bcc2_calc = 0;
     for (int j = 0; j < i; j++) bcc2_calc ^= packet[j];
@@ -188,7 +180,7 @@ int llread(int fd, unsigned char *packet) {
         write(fd, res, 5);
         return i; // Sucesso, retorna tamanho dos dados
     } else {
-        // Trama duplicada: aceitamos mas descartamos os dados para a app
+        // Pacote duplicado: aceitamos mas descartamos os dados para a app
         printf("[LLREAD] Trama duplicada detectada. A enviar RR...\n");
         res[2] = (expected_ns == 0) ? C_RR0 : C_RR1;
         res[3] = res[1] ^ res[2];
@@ -198,9 +190,7 @@ int llread(int fd, unsigned char *packet) {
     }
 }
 
-// ----------------------------------------------------------------------------
-// LLCLOSE
-// ----------------------------------------------------------------------------
+
 int llclose(int fd) {
     printf("[LLCLOSE] A enviar DISC...\n");
     unsigned char disc[5] = {FLAG, A_RX, C_DISC, A_RX ^ C_DISC, FLAG};
@@ -215,9 +205,7 @@ int llclose(int fd) {
     return 0;
 }
 
-// ----------------------------------------------------------------------------
-// MAIN
-// ----------------------------------------------------------------------------
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         printf("Uso: %s <PortaSerie>\n", argv[0]);
