@@ -121,12 +121,12 @@ int llopen(const char *port) {
         
         if (readSupervision(fd, A_TX, C_UA) == 0) {
             alarm(0);
-            printf("[LLOPEN] Conexão estabelecida.\n");
+            printf("[LLOPEN] Ligação estabelecida.\n");
             return fd;
         }
     }
 
-    printf("[LLOPEN] Falha ao estabelecer conexão.\n");
+    printf("[LLOPEN] Falha ao estabelecer ligação.\n");
     return -1;
 }
 
@@ -160,6 +160,8 @@ int llwrite(int fd, unsigned char *buffer, int length) {
         }
     }
     frame[frameIdx++] = FLAG;
+
+    printf("[LLWRITE] tamanho original: %d | após stuffing: %d\n", length, frameIdx);
 
     unsigned char expectedRR = (ns == 0) ? C_RR1 : C_RR0;
     unsigned char expectedREJ = (ns == 0) ? C_REJ1 : C_REJ0;
@@ -261,7 +263,7 @@ int llclose(int fd) {
             // UA final 
             unsigned char ua_frame[5] = {FLAG, A_RX, C_UA, A_RX ^ C_UA, FLAG};
             write(fd, ua_frame, 5);
-            printf("[LLCLOSE] Conexão terminada com sucesso.\n");
+            printf("[LLCLOSE] Ligação terminada com sucesso.\n");
             break;
         }
     }
@@ -321,8 +323,8 @@ int main(int argc, char** argv) {
     printf("[MAIN] A enviar pacote START...\n");
     sendControlPacket(fd, APP_START, filename, filesize);
 
-    unsigned char fileBuf[1024];
-    unsigned char appPacket[1024 + 3];
+    unsigned char fileBuf[512];
+    unsigned char appPacket[512 + 3];
     int bytesRead;
 
     printf("[MAIN] A enviar dados do ficheiro...\n");
